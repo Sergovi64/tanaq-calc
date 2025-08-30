@@ -81,7 +81,7 @@ async function fetchBitkap() {
     }
 }
 
-// ЦБ РФ: сколько одной валюты за одну другую (RUB->USD, USD->RUB, EUR->CNY и т.д.)
+// Из fromCurrency в toCurrency по курсу ЦБ (через RUB)
 function getCbrRate(from, to) {
     if (from === to) return 1;
     if (from === 'RUB') return 1 / (ratesCbr[to] || 1);
@@ -89,7 +89,7 @@ function getCbrRate(from, to) {
     return (ratesCbr[from] || 1) / (ratesCbr[to] || 1);
 }
 
-// Bitkap: RUB<->USDT, USD<->USDT, THB<->USDT, и любые пары где возможно
+// Получение курса между валютами через Bitkap (где возможно)
 function getBitkapRate(from, to) {
     if (from === to) return 1;
     let direct = `${from}_${to}`;
@@ -106,7 +106,6 @@ function getBitkapRate(from, to) {
     return null;
 }
 
-// Ключевая функция: расчёт (и обязательно результат в USDT через USD)
 function update() {
     const amount = Math.max(+document.getElementById('amount').value, 0);
     if (!amount) {
@@ -121,7 +120,7 @@ function update() {
 
     let showRate = '—', showResult = '—';
 
-    // Основной результат по BitKap, если возможно, иначе по ЦБ:
+    // Выбор курса для конвертации между валютами: при наличии Bitkap — сначала по Bitkap, иначе CBR
     let useBitkap = !!bitkapRate && !isNaN(bitkapRate) && bitkapRate > 0;
     let resultValue = useBitkap ? amount * bitkapRate : amount * cbrRate;
     showRate = (useBitkap ? bitkapRate : cbrRate).toLocaleString('ru-RU', { maximumFractionDigits: 6 });
@@ -130,34 +129,28 @@ function update() {
     document.getElementById('rate').innerText = showRate;
     document.getElementById('result').innerHTML = showResult;
 
-    // Расчёт через USD и USDT: first из from-в-USD (через ЦБ или BitKap), потом USD→USDT по BitKap
-    let usdt = 0, warning = "";
-    // Сколько USD за эту сумму
-    let usdRateFrom = 1;
-    if (fromCurrency === "USD") {
-        usdRateFrom = 1;
-    } else if (fromCurrency === "USDT" && bitkap['USD_USDT']) {
-        usdRateFrom = bitkap['USD_USDT'];
-    } else if (fromCurrency === "RUB") {
-        usdRateFrom = 1 / (ratesCbr["USD"] || 1);
-    } else if (ratesCbr[fromCurrency] && ratesCbr['USD']) {
-        usdRateFrom = (ratesCbr[fromCurrency] || 1) / (ratesCbr['USD'] || 1);
-    } else if (bitkap[`${fromCurrency}_USDT`] && bitkap['USD_USDT']) {
-        usdRateFrom = bitkap[`${fromCurrency}_USDT`] * bitkap['USD_USDT'];
-        warning += "Расчёт через BitKap";
+    // Корректный расчет USDT:
+    // любой валютой -> USD по курсу ЦБ, потом USD -> USDT по Bitkap (USD/USDT ~ 1, но не всегда)
+    let amount_in_usd;
+
+    if (fromCurrency === 'USD') {
+        amount_in_usd = amount;
+    } else if (fromCurrency === "USDT" && bitkap['USDT_USD']) {
+        // USDT → USD по Bitkap
+        amount_in_usd = amount * bitkap['USDT_USD'];
+    } else {
+        // Любая другая валюта через ЦБ
+        amount_in_usd = amount * getCbrRate(fromCurrency, 'USD');
     }
 
-    let sumUSD = amount * usdRateFrom;
-    // Теперь узнаём сколько это в USDT: (USD→USDT по BitKap)
-    let usd_usdt = bitkap['USDT_USD'] ? 1 / bitkap['USDT_USD'] : bitkap['USD_USDT'];
-    if (!usd_usdt) usd_usdt = bitkap['USDT_RUB'] && ratesCbr['USD'] ? (ratesCbr['USD'] / bitkap['USDT_RUB']) : null;
-
-    if (usd_usdt) {
-        usdt = sumUSD * usd_usdt;
+    // Курс USD→USDT по Bitkap: если есть USDT_USD (USD за 1 USDT), USD→USDT: делить!
+    let usd_per_usdt = bitkap['USDT_USD'];
+    let amount_in_usdt = null;
+    if (usd_per_usdt && usd_per_usdt > 0) {
+        amount_in_usdt = amount_in_usd / usd_per_usdt;
         document.getElementById('result-usdt').style.display = '';
         document.getElementById('result-usdt').innerHTML =
-            `Эквивалент в USDT (через USD): ${usdt.toLocaleString('ru-RU', { maximumFractionDigits: 3 })} ₮` +
-            (warning ? `<span class="usdt-warning">${warning}</span>` : "");
+            `Эквивалент через USD → USDT на BitKap: <b>${amount_in_usdt.toLocaleString('ru-RU', { maximumFractionDigits: 3 })} ₮</b>`;
     } else {
         document.getElementById('result-usdt').style.display = 'none';
     }
