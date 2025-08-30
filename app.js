@@ -13,7 +13,7 @@ const CURRENCIES = [
     { code: 'THB', name: 'Бат', flag: flagEmoji('TH') },
     { code: 'AED', name: 'Дирхам', flag: flagEmoji('AE') },
     { code: 'HKD', name: 'Гонконг.', flag: flagEmoji('HK') },
-    { code: 'USDT', name: 'Tether', flag: "₮" }
+    //{ code: 'USDT', name: 'Tether', flag: "₮" }
 ];
 
 let ratesCbr = {};     // RUB за 1 валюту по ЦБ (с приведением к 1 единице!)
